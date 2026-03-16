@@ -1,2 +1,4 @@
 python-telegram-bot==20.3
+httpx==0.24.0
+httpcore==0.17.1
 requests==2.31.0
