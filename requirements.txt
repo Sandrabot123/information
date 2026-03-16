@@ -1,4 +1,2 @@
-python-telegram-bot
-git add requirements.txt
-git commit -m "Add requirements for Render"
-git push
+python-telegram-bot==20.3
+requests==2.31.0
