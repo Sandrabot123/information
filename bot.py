@@ -4,8 +4,8 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 # Get your API keys from environment variables
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")  # Your bot token
-WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")  # OpenWeatherMap API key
+TELEGRAM_TOKEN = os.getenv("7303835691:AAGFigl28bU-UeeII5eDb2nvwMEt15ObyUc")  # Your bot token
+WEATHER_API_KEY = os.getenv("be2d3cb02e4949a6ba7152141261603 ")  # OpenWeatherMap API key
 
 if not TELEGRAM_TOKEN or not WEATHER_API_KEY:
     raise ValueError("Please set TELEGRAM_TOKEN and WEATHER_API_KEY as environment variables")
