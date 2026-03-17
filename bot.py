@@ -1,4 +1,5 @@
 import os
+import asyncio
 import requests
 from flask import Flask, request
 from telegram import Update, Bot
@@ -64,7 +65,9 @@ def home():
 # ------------------ RUN ON RENDER ------------------
 if __name__ == "__main__":
     webhook_url = f"{RENDER_EXTERNAL_URL}/{TELEGRAM_TOKEN}"
-    BOT.set_webhook(webhook_url)
+    
+    # Properly await async webhook
+    asyncio.run(BOT.set_webhook(webhook_url))
 
     port = int(os.environ.get("PORT", 10000))
     APP.run(host="0.0.0.0", port=port)
