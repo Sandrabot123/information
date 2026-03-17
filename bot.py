@@ -7,12 +7,13 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 # ------------------ CONFIG ------------------
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
-RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL")  # e.g., https://mybot.onrender.com
+RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL")  # e.g., https://yourbot.onrender.com
 
 if not TELEGRAM_TOKEN or not WEATHER_API_KEY or not RENDER_EXTERNAL_URL:
     raise ValueError("Please set TELEGRAM_TOKEN, WEATHER_API_KEY, and RENDER_EXTERNAL_URL as environment variables")
 
 BOT = Bot(token=TELEGRAM_TOKEN)
+APP_BOT = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 APP = Flask(__name__)
 
 # ------------------ TELEGRAM HANDLERS ------------------
@@ -45,20 +46,18 @@ async def weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"Error fetching weather: {e}")
 
-# ------------------ SET UP APPLICATION ------------------
-APP_BOT = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+# Add handlers
 APP_BOT.add_handler(CommandHandler("start", start))
 APP_BOT.add_handler(CommandHandler("weather", weather))
 
 # ------------------ FLASK WEBHOOK ------------------
-@app.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
+@APP.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), BOT)
-    # Use the application object to process update
     APP_BOT.update_queue.put(update)
     return "OK"
 
-@app.route("/")
+@APP.route("/")
 def home():
     return "Bot is running!"
 
