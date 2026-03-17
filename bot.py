@@ -1,15 +1,25 @@
 import os
+import threading
 import requests
+from flask import Flask
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-# Get your API keys from environment variables
+# Get your API keys
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
 
 if not TELEGRAM_TOKEN or not WEATHER_API_KEY:
     raise ValueError("Please set TELEGRAM_TOKEN and WEATHER_API_KEY as environment variables")
 
+# ------------------ FLASK PART ------------------
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "Bot is running!"
+
+# ------------------ TELEGRAM BOT ------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Hello! Send /weather <city> to get weather info.")
 
@@ -35,14 +45,24 @@ async def weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         message = f"Weather in {city}:\nCondition: {weather_desc}\nTemperature: {temp}°C\nHumidity: {humidity}%"
         await update.message.reply_text(message)
+
     except Exception as e:
         await update.message.reply_text(f"Error fetching weather: {e}")
 
-if __name__ == "__main__":
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+def run_bot():
+    app_bot = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("weather", weather))
+    app_bot.add_handler(CommandHandler("start", start))
+    app_bot.add_handler(CommandHandler("weather", weather))
 
     print("Bot is running...")
-    app.run_polling()
+    app_bot.run_polling()
+
+# ------------------ RUN BOTH ------------------
+if __name__ == "__main__":
+    # Run bot in background thread
+    threading.Thread(target=run_bot).start()
+
+    # Start Flask (for Render port)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
