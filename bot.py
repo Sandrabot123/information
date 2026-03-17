@@ -1,35 +1,28 @@
 import os
-import asyncio
 import requests
 from flask import Flask, request
 from telegram import Bot, Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+import asyncio
 
 # ------------------ CONFIG ------------------
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
 
 if not TELEGRAM_TOKEN or not WEATHER_API_KEY:
-    raise ValueError("Please set TELEGRAM_TOKEN and WEATHER_API_KEY")
+    raise ValueError("Missing environment variables")
 
 WEBHOOK_URL = f"https://information-jgk7.onrender.com/{TELEGRAM_TOKEN}"
 
-# ------------------ FLASK ------------------
+# ------------------ INIT ------------------
 app = Flask(__name__)
-
-@app.route("/")
-def home():
-    return "Bot is running!"
-
-# ------------------ TELEGRAM BOT ------------------
 bot = Bot(token=TELEGRAM_TOKEN)
-app_bot = ApplicationBuilder().bot(bot).build()
+application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
-# /start command
+# ------------------ COMMANDS ------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Hello! Send /weather <city>")
 
-# /weather command
 async def weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("Usage: /weather <city>")
@@ -53,30 +46,39 @@ async def weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"Error: {e}")
 
-# Add handlers
-app_bot.add_handler(CommandHandler("start", start))
-app_bot.add_handler(CommandHandler("weather", weather))
+application.add_handler(CommandHandler("start", start))
+application.add_handler(CommandHandler("weather", weather))
 
 # ------------------ WEBHOOK ------------------
 @app.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
 def webhook():
-    update = Update.de_json(request.get_json(force=True), bot)
+    try:
+        update = Update.de_json(request.get_json(force=True), bot)
 
-    # ✅ FIX: directly process update (no async queue issues)
-    asyncio.run(app_bot.process_update(update))
+        # 🔥 CRITICAL FIX: use existing loop safely
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(application.process_update(update))
+        loop.close()
 
-    return "OK"
+        return "OK"
+    except Exception as e:
+        print("ERROR:", e)  # 👈 THIS WILL SHOW REAL ERROR IN LOGS
+        return "ERROR", 500
 
-# ------------------ START BOT ------------------
-async def init_bot():
-    await app_bot.initialize()
-    await app_bot.start()
+@app.route("/")
+def home():
+    return "Bot is running!"
+
+# ------------------ START ------------------
+async def setup():
+    await application.initialize()
+    await application.start()
     await bot.set_webhook(WEBHOOK_URL)
-    print(f"Webhook set to {WEBHOOK_URL}")
+    print("Webhook set:", WEBHOOK_URL)
 
-# ------------------ RUN ------------------
 if __name__ == "__main__":
-    asyncio.run(init_bot())
+    asyncio.run(setup())
 
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
