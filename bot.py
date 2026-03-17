@@ -1,37 +1,40 @@
 import os
 import asyncio
-import requests
 from flask import Flask, request
 from telegram import Update, Bot
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, ContextTypes
 
-# ------------------ CONFIG ------------------
+# ------------------ ENVIRONMENT VARIABLES ------------------
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
-RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL")  # e.g., https://yourbot.onrender.com
 
-if not TELEGRAM_TOKEN or not WEATHER_API_KEY or not RENDER_EXTERNAL_URL:
-    raise ValueError("Please set TELEGRAM_TOKEN, WEATHER_API_KEY, and RENDER_EXTERNAL_URL as environment variables")
+if not TELEGRAM_TOKEN or not WEATHER_API_KEY:
+    raise ValueError("Set TELEGRAM_TOKEN and WEATHER_API_KEY as environment variables!")
 
+# ------------------ FLASK SETUP ------------------
+app = Flask(__name__)
+
+# ------------------ TELEGRAM BOT SETUP ------------------
 BOT = Bot(token=TELEGRAM_TOKEN)
-APP_BOT = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-APP = Flask(__name__)
+APP_BOT = Application.builder().token(TELEGRAM_TOKEN).build()
 
-# ------------------ TELEGRAM HANDLERS ------------------
+# Command handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Hello! Send /weather <city> to get weather info.")
+    await update.message.reply_text(
+        "Hello! Send /weather <city> to get weather info."
+    )
 
 async def weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) == 0:
-        await update.message.reply_text("Please provide a city name, e.g., /weather London")
+    if not context.args:
+        await update.message.reply_text("Please provide a city, e.g., /weather London")
         return
 
     city = " ".join(context.args)
     url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={WEATHER_API_KEY}&units=metric"
 
     try:
-        response = requests.get(url)
-        data = response.json()
+        import requests
+        data = requests.get(url).json()
 
         if data.get("cod") != 200:
             await update.message.reply_text(f"Error: {data.get('message', 'City not found')}")
@@ -47,27 +50,31 @@ async def weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"Error fetching weather: {e}")
 
-# Add handlers
 APP_BOT.add_handler(CommandHandler("start", start))
 APP_BOT.add_handler(CommandHandler("weather", weather))
 
-# ------------------ FLASK WEBHOOK ------------------
-@APP.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
+# ------------------ FLASK WEBHOOK ROUTE ------------------
+@app.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), BOT)
-    APP_BOT.update_queue.put(update)
+    asyncio.create_task(APP_BOT.update_queue.put(update))  # properly schedule coroutine
     return "OK"
 
-@APP.route("/")
-def home():
+@app.route("/")
+def index():
     return "Bot is running!"
 
-# ------------------ RUN ON RENDER ------------------
-if __name__ == "__main__":
-    webhook_url = f"{RENDER_EXTERNAL_URL}/{TELEGRAM_TOKEN}"
-    
-    # Properly await async webhook
-    asyncio.run(BOT.set_webhook(webhook_url))
+# ------------------ SET WEBHOOK ------------------
+async def set_webhook():
+    url = f"https://information-jgk7.onrender.com/{TELEGRAM_TOKEN}"
+    await BOT.set_webhook(url)
+    print(f"Webhook set to {url}")
 
+# ------------------ RUN FLASK ------------------
+if __name__ == "__main__":
+    # Set webhook before starting Flask
+    asyncio.run(set_webhook())
+
+    # Flask must listen on Render's port
     port = int(os.environ.get("PORT", 10000))
-    APP.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=port)
