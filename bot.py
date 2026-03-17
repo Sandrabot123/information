@@ -2,7 +2,7 @@ import os
 import requests
 from flask import Flask, request
 from telegram import Update, Bot
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, Dispatcher
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 # ------------------ CONFIG ------------------
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -17,9 +17,7 @@ APP = Flask(__name__)
 
 # ------------------ TELEGRAM HANDLERS ------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Hello! Send /weather <city> to get weather info."
-    )
+    await update.message.reply_text("Hello! Send /weather <city> to get weather info.")
 
 async def weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) == 0:
@@ -47,16 +45,17 @@ async def weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"Error fetching weather: {e}")
 
-# ------------------ SET UP DISPATCHER ------------------
-DISPATCHER = Dispatcher(BOT, None, workers=0)
-DISPATCHER.add_handler(CommandHandler("start", start))
-DISPATCHER.add_handler(CommandHandler("weather", weather))
+# ------------------ SET UP APPLICATION ------------------
+APP_BOT = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+APP_BOT.add_handler(CommandHandler("start", start))
+APP_BOT.add_handler(CommandHandler("weather", weather))
 
 # ------------------ FLASK WEBHOOK ------------------
 @app.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), BOT)
-    DISPATCHER.process_update(update)
+    # Use the application object to process update
+    APP_BOT.update_queue.put(update)
     return "OK"
 
 @app.route("/")
