@@ -9,40 +9,28 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
 
 if not TELEGRAM_TOKEN or not WEATHER_API_KEY:
-    raise ValueError("Please set TELEGRAM_TOKEN and WEATHER_API_KEY as environment variables")
+    raise ValueError("Please set TELEGRAM_TOKEN and WEATHER_API_KEY")
 
 WEBHOOK_URL = f"https://information-jgk7.onrender.com/{TELEGRAM_TOKEN}"
 
-# ------------------ FLASK APP ------------------
+# ------------------ FLASK ------------------
 app = Flask(__name__)
 
-@app.route("/", methods=["GET"])
+@app.route("/")
 def home():
     return "Bot is running!"
 
-@app.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
-def telegram_webhook():
-    """Receive updates from Telegram."""
-    update_json = request.get_json(force=True)
-    update = Update.de_json(update_json, bot)
-    asyncio.run(app_bot.update_queue.put(update))
-    return "OK"
-
-# ------------------ TELEGRAM BOT ------------------
+# ------------------ TELEGRAM ------------------
 bot = Bot(token=TELEGRAM_TOKEN)
-
 app_bot = ApplicationBuilder().bot(bot).build()
 
-# /start command
+# Commands
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Hello! Send /weather <city> to get weather info."
-    )
+    await update.message.reply_text("Hello! Send /weather <city>")
 
-# /weather command
 async def weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) == 0:
-        await update.message.reply_text("Please provide a city, e.g., /weather London")
+    if not context.args:
+        await update.message.reply_text("Usage: /weather <city>")
         return
 
     city = " ".join(context.args)
@@ -50,35 +38,46 @@ async def weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         import requests
-        res = requests.get(url).json()
+        data = requests.get(url).json()
 
-        if res.get("cod") != 200:
-            await update.message.reply_text(f"Error: {res.get('message', 'City not found')}")
+        if data.get("cod") != 200:
+            await update.message.reply_text("City not found")
             return
 
-        weather_desc = res["weather"][0]["description"].title()
-        temp = res["main"]["temp"]
-        humidity = res["main"]["humidity"]
+        desc = data["weather"][0]["description"]
+        temp = data["main"]["temp"]
 
-        await update.message.reply_text(
-            f"Weather in {city}:\nCondition: {weather_desc}\nTemperature: {temp}°C\nHumidity: {humidity}%"
-        )
+        await update.message.reply_text(f"{city}: {desc}, {temp}°C")
+
     except Exception as e:
-        await update.message.reply_text(f"Error fetching weather: {e}")
+        await update.message.reply_text(f"Error: {e}")
 
 # Add handlers
 app_bot.add_handler(CommandHandler("start", start))
 app_bot.add_handler(CommandHandler("weather", weather))
 
-# ------------------ SET WEBHOOK ------------------
-bot.set_webhook(WEBHOOK_URL)
-print(f"Webhook set to {WEBHOOK_URL}")
+# ------------------ WEBHOOK ------------------
+@app.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), bot)
 
-# ------------------ RUN FLASK ------------------
+    # ✅ FIXED: properly handle async queue
+    asyncio.get_event_loop().create_task(
+        app_bot.update_queue.put(update)
+    )
+
+    return "OK"
+
+# ------------------ STARTUP ------------------
+async def init_bot():
+    await app_bot.initialize()
+    await app_bot.start()
+    await bot.set_webhook(WEBHOOK_URL)
+    print(f"Webhook set to {WEBHOOK_URL}")
+
 if __name__ == "__main__":
-    # Run the Telegram bot queue
-    asyncio.get_event_loop().create_task(app_bot.start())
-    
-    # Run Flask server
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(init_bot())
+
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
