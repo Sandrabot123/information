@@ -1,5 +1,6 @@
 import os
 import asyncio
+import requests
 from flask import Flask, request
 from telegram import Bot, Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
@@ -20,14 +21,15 @@ app = Flask(__name__)
 def home():
     return "Bot is running!"
 
-# ------------------ TELEGRAM ------------------
+# ------------------ TELEGRAM BOT ------------------
 bot = Bot(token=TELEGRAM_TOKEN)
 app_bot = ApplicationBuilder().bot(bot).build()
 
-# Commands
+# /start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Hello! Send /weather <city>")
 
+# /weather command
 async def weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("Usage: /weather <city>")
@@ -37,7 +39,6 @@ async def weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={WEATHER_API_KEY}&units=metric"
 
     try:
-        import requests
         data = requests.get(url).json()
 
         if data.get("cod") != 200:
@@ -61,23 +62,21 @@ app_bot.add_handler(CommandHandler("weather", weather))
 def webhook():
     update = Update.de_json(request.get_json(force=True), bot)
 
-    # ✅ FIXED: properly handle async queue
-    asyncio.get_event_loop().create_task(
-        app_bot.update_queue.put(update)
-    )
+    # ✅ FIX: directly process update (no async queue issues)
+    asyncio.run(app_bot.process_update(update))
 
     return "OK"
 
-# ------------------ STARTUP ------------------
+# ------------------ START BOT ------------------
 async def init_bot():
     await app_bot.initialize()
     await app_bot.start()
     await bot.set_webhook(WEBHOOK_URL)
     print(f"Webhook set to {WEBHOOK_URL}")
 
+# ------------------ RUN ------------------
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(init_bot())
+    asyncio.run(init_bot())
 
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
