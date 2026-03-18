@@ -1,17 +1,37 @@
 import os
 import requests
+from fastapi import FastAPI, Request
 from telegram import Update
-from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, ContextTypes, filters
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
 
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+# ---------------------
+# CONFIG
+# ---------------------
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+RENDER_URL = os.environ.get("RENDER_URL")
 WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
 
+if not TELEGRAM_TOKEN or not RENDER_URL or not WEATHER_API_KEY:
+    raise ValueError("TELEGRAM_TOKEN, RENDER_URL, and WEATHER_API_KEY must be set!")
+
+# ---------------------
+# FASTAPI APP
+# ---------------------
+app = FastAPI()
+
+# ---------------------
+# TELEGRAM BOT
+# ---------------------
+application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+
+# /start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "👋 Hello! I can give you the weather forecast.\n"
         "Try sending 'London weather' or 'Paris weather tomorrow'."
     )
 
+# Weather function
 def get_weather(city: str, day: str = "today"):
     city = city.strip()
     if day == "today":
@@ -28,11 +48,12 @@ def get_weather(city: str, day: str = "today"):
         response = requests.get(url).json()
         if response.get("cod") != "200":
             return None
-        tomorrow_forecast = response["list"][8]
+        tomorrow_forecast = response["list"][8]  # ~24h later
         temp = tomorrow_forecast["main"]["temp"]
         desc = tomorrow_forecast["weather"][0]["description"]
         return f"🌦 Weather in {city} tomorrow:\nTemperature: {temp}°C\nDescription: {desc}"
 
+# Message handler
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.lower()
     day = "today"
@@ -50,18 +71,46 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(f"❌ City '{city}' not found. Try again.")
 
-def main():
-    if not TELEGRAM_BOT_TOKEN or not WEATHER_API_KEY:
-        print("ERROR: Missing TELEGRAM_TOKEN or WEATHER_API_KEY environment variables!")
-        return
+application.add_handler(CommandHandler("start", start))
+application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
 
-    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+# ---------------------
+# STARTUP EVENT - initialize bot and set webhook
+# ---------------------
+@app.on_event("startup")
+async def startup_event():
+    await application.initialize()
+    await application.start()
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    # Set webhook
+    url = f"{RENDER_URL}/{TELEGRAM_TOKEN}"
+    r = requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook?url={url}")
+    if r.status_code == 200:
+        print("Webhook set successfully ✅")
+    else:
+        print("Failed to set webhook:", r.text)
 
-    print("🌐 Weather bot is running...")
-    app.run_polling()
+# ---------------------
+# WEBHOOK ENDPOINT
+# ---------------------
+@app.post(f"/{TELEGRAM_TOKEN}")
+async def telegram_webhook(request: Request):
+    data = await request.json()
+    update = Update.de_json(data, application.bot)
+    await application.process_update(update)
+    return {"ok": True}
 
+# ---------------------
+# HEALTH CHECK
+# ---------------------
+@app.get("/")
+async def home():
+    return {"status": "Bot is running!"}
+
+# ---------------------
+# MAIN (optional, for local testing)
+# ---------------------
 if __name__ == "__main__":
-    main()
+    import uvicorn
+    port = int(os.environ.get("PORT", 10000))
+    uvicorn.run("weather_bot:app", host="0.0.0.0", port=port)
