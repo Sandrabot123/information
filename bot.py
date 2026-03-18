@@ -1,8 +1,9 @@
 import os
-import asyncio
 from flask import Flask, request
-from telegram import Update
+from telegram import Update, Bot
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+import requests
+import asyncio
 
 # ---------------------
 # CONFIG
@@ -10,6 +11,11 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 if not TELEGRAM_TOKEN:
     raise ValueError("No TELEGRAM_TOKEN environment variable set!")
+
+# Public URL of your Render app
+RENDER_URL = os.environ.get("RENDER_URL")
+if not RENDER_URL:
+    raise ValueError("No RENDER_URL environment variable set! Example: https://your-app.onrender.com")
 
 # ---------------------
 # FLASK APP
@@ -21,11 +27,10 @@ app = Flask(__name__)
 # ---------------------
 application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
-# /start command handler
+# Command handler: /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Hello! Your bot is running ✅")
 
-# Add the command handler
 application.add_handler(CommandHandler("start", start))
 
 # ---------------------
@@ -33,25 +38,32 @@ application.add_handler(CommandHandler("start", start))
 # ---------------------
 @app.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
 def webhook():
-    # Get incoming update from Telegram
-    data = request.get_json(force=True)
-    update = Update.de_json(data, application.bot)
-    
-    # Process the update asynchronously
-    asyncio.run(application.process_update(update))
+    update = Update.de_json(request.get_json(force=True), application.bot)
+    application.create_task(application.process_update(update))
     return "ok"
 
-# ---------------------
-# HOME ROUTE (test)
-# ---------------------
+# Health check
 @app.route("/")
 def home():
     return "Bot is running!"
 
 # ---------------------
+# AUTO-SET TELEGRAM WEBHOOK
+# ---------------------
+def set_webhook():
+    url = f"{RENDER_URL}/{TELEGRAM_TOKEN}"
+    r = requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook?url={url}")
+    if r.status_code == 200:
+        print("Webhook set successfully ✅")
+    else:
+        print("Failed to set webhook:", r.text)
+
+# ---------------------
 # MAIN
 # ---------------------
 if __name__ == "__main__":
-    # Run Flask on Render's port
+    # Set webhook when starting
+    set_webhook()
+    # Run Flask
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
