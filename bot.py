@@ -1,9 +1,8 @@
 import os
-import asyncio
-from flask import Flask, request
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 import requests
+from fastapi import FastAPI, Request
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
 
 # ---------------------
 # CONFIG
@@ -17,46 +16,44 @@ if not RENDER_URL:
     raise ValueError("No RENDER_URL environment variable set! Example: https://your-app.onrender.com")
 
 # ---------------------
-# FLASK APP
+# FASTAPI APP
 # ---------------------
-app = Flask(__name__)
+app = FastAPI()
 
 # ---------------------
 # TELEGRAM BOT
 # ---------------------
 application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
-# /start command handler
+# /start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Hello! Your bot is running ✅")
 
-application.add_handler(CommandHandler("start", start))
-
-# Optional: Echo handler to test messages
-from telegram.ext import MessageHandler, filters
+# Echo handler for testing
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Got your message: {update.message.text}")
 
+application.add_handler(CommandHandler("start", start))
 application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), echo))
 
 # ---------------------
-# WEBHOOK ROUTE
+# WEBHOOK ENDPOINT
 # ---------------------
-@app.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
-def webhook():
-    """Receive Telegram updates via webhook."""
-    update = Update.de_json(request.get_json(force=True), application.bot)
-    # Run async handler synchronously
-    asyncio.run(application.process_update(update))
-    return "ok"
+@app.post(f"/{TELEGRAM_TOKEN}")
+async def telegram_webhook(request: Request):
+    """Receive updates from Telegram asynchronously."""
+    data = await request.json()
+    update = Update.de_json(data, application.bot)
+    await application.process_update(update)
+    return {"ok": True}
 
 # Health check
-@app.route("/")
-def home():
-    return "Bot is running!"
+@app.get("/")
+async def home():
+    return {"status": "Bot is running!"}
 
 # ---------------------
-# AUTO-SET TELEGRAM WEBHOOK
+# AUTO-SET WEBHOOK
 # ---------------------
 def set_webhook():
     url = f"{RENDER_URL}/{TELEGRAM_TOKEN}"
@@ -70,6 +67,7 @@ def set_webhook():
 # MAIN
 # ---------------------
 if __name__ == "__main__":
+    import uvicorn
     set_webhook()
     port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    uvicorn.run("bot:app", host="0.0.0.0", port=port, log_level="info")
