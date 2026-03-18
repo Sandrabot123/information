@@ -1,11 +1,16 @@
 import os
 import requests
 from telegram import Update
-from telegram.ext import Updater, MessageHandler, Filters, CallbackContext
+from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, ContextTypes, filters
 
-# Use your exact environment variable names
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "👋 Hello! I can give you the weather forecast.\n"
+        "Try sending 'London weather' or 'Paris weather tomorrow'."
+    )
 
 def get_weather(city: str, day: str = "today"):
     city = city.strip()
@@ -28,7 +33,7 @@ def get_weather(city: str, day: str = "today"):
         desc = tomorrow_forecast["weather"][0]["description"]
         return f"🌦 Weather in {city} tomorrow:\nTemperature: {temp}°C\nDescription: {desc}"
 
-def handle_message(update: Update, context: CallbackContext):
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.lower()
     day = "today"
     if "tomorrow" in text:
@@ -36,26 +41,27 @@ def handle_message(update: Update, context: CallbackContext):
 
     city = text.replace("weather", "").replace("forecast", "").replace("today", "").replace("tomorrow", "").strip()
     if not city:
-        update.message.reply_text("❗ Please provide a city, e.g., 'London weather tomorrow'")
+        await update.message.reply_text("❗ Please provide a city, e.g., 'London weather tomorrow'")
         return
 
     weather_msg = get_weather(city, day)
     if weather_msg:
-        update.message.reply_text(weather_msg)
+        await update.message.reply_text(weather_msg)
     else:
-        update.message.reply_text(f"❌ City '{city}' not found. Try again.")
+        await update.message.reply_text(f"❌ City '{city}' not found. Try again.")
 
 def main():
     if not TELEGRAM_BOT_TOKEN or not WEATHER_API_KEY:
         print("ERROR: Missing TELEGRAM_TOKEN or WEATHER_API_KEY environment variables!")
         return
 
-    updater = Updater(TELEGRAM_BOT_TOKEN)
-    updater.dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
+    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("🌐 Weather bot is running...")
-    updater.start_polling()
-    updater.idle()
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
