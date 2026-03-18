@@ -1,44 +1,48 @@
 import os
+import asyncio
 from flask import Flask, request
-from telegram import Update, Bot
+from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-# Get token from environment variable
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 
 if not TELEGRAM_TOKEN:
-    raise ValueError("TELEGRAM_TOKEN environment variable not set")
+    raise ValueError("No TELEGRAM_TOKEN set")
 
-# Set up Flask app
 app = Flask(__name__)
 
-# Set up the bot
-BOT = Bot(token=TELEGRAM_TOKEN)
-APPLICATION = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+# Create Telegram application
+application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
-# Example command handler
+# --- HANDLERS ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Hello! This is your bot. Send /weather to get the weather.")
+    print("START command received")
+    await update.message.reply_text("Hello! Your bot is working ✅")
 
-async def weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Replace with your actual weather logic
-    await update.message.reply_text("Weather feature is coming soon!")
+# Add handlers
+application.add_handler(CommandHandler("start", start))
 
-APPLICATION.add_handler(CommandHandler("start", start))
-APPLICATION.add_handler(CommandHandler("weather", weather))
 
-# Webhook route — must match your full token URL
+# --- WEBHOOK ROUTE ---
 @app.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
 def webhook():
-    update = Update.de_json(request.get_json(force=True), BOT)
-    # Dispatch the update to your handlers
-    APPLICATION.update_queue.put_nowait(update)
-    return "OK"
+    update = Update.de_json(request.get_json(force=True), application.bot)
 
+    # Run async handler manually
+    asyncio.run(application.process_update(update))
+
+    return "ok"
+
+
+# --- HOME ROUTE (for testing) ---
+@app.route("/")
+def home():
+    return "Bot is running!"
+
+
+# --- MAIN ---
 if __name__ == "__main__":
-    # Use your Render URL for webhook
-    webhook_url = f"https://information-jgk7.onrender.com/{TELEGRAM_TOKEN}"
-    BOT.set_webhook(webhook_url)
-    
-    # Run Flask on port 10000 for Render
+    # IMPORTANT: DO NOT set webhook here (causes warning)
+    # Set it manually once (see below)
+
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
