@@ -31,46 +31,60 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Try sending 'London weather' or 'Paris weather tomorrow'."
     )
 
-# Weather function with auto city formatting
+# ---------------------
+# WEATHER FUNCTIONS
+# ---------------------
 def get_weather(city: str, day: str = "today"):
-    city = city.strip().title()  # Capitalize each word
+    city = city.strip()
 
-    # Fix small countries/cities that need country codes
-    city_corrections = {
-        "Singapore": "Singapore,SG",
-        "Hong Kong": "Hong Kong,HK",
-        "Macau": "Macau,MO",
-        "London": "London,GB"
-    }
-    city = city_corrections.get(city, city)
+    # Step 1: Geocoding (get lat/lon for any city)
+    geo_url = f"http://api.openweathermap.org/geo/1.0/direct?q={city}&limit=1&appid={WEATHER_API_KEY}"
+    geo_resp = requests.get(geo_url, timeout=10).json()
+    if not geo_resp:
+        return None
+    lat = geo_resp[0]["lat"]
+    lon = geo_resp[0]["lon"]
+    city_name = geo_resp[0]["name"]
+    country = geo_resp[0]["country"]
 
     if day == "today":
-        url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={WEATHER_API_KEY}&units=metric"
-        response = requests.get(url).json()
-        if response.get("cod") != 200:
+        url = f"http://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={WEATHER_API_KEY}&units=metric"
+        resp = requests.get(url, timeout=10).json()
+        if resp.get("cod") != 200:
             return None
-        temp = response["main"]["temp"]
-        desc = response["weather"][0]["description"]
-        humidity = response["main"]["humidity"]
-        return f"🌤 Weather in {city} today:\nTemperature: {temp}°C\nDescription: {desc}\nHumidity: {humidity}%"
+        temp = resp["main"]["temp"]
+        desc = resp["weather"][0]["description"]
+        humidity = resp["main"]["humidity"]
+        return f"🌤 Weather in {city_name}, {country} today:\nTemperature: {temp}°C\nDescription: {desc}\nHumidity: {humidity}%"
     else:
-        url = f"http://api.openweathermap.org/data/2.5/forecast?q={city}&appid={WEATHER_API_KEY}&units=metric"
-        response = requests.get(url).json()
-        if response.get("cod") != "200":
+        url = f"http://api.openweathermap.org/data/2.5/forecast?lat={lat}&lon={lon}&appid={WEATHER_API_KEY}&units=metric"
+        resp = requests.get(url, timeout=10).json()
+        if resp.get("cod") != "200":
             return None
-        tomorrow_forecast = response["list"][8]  # ~24h later
+        tomorrow_forecast = resp["list"][8]  # ~24h later
         temp = tomorrow_forecast["main"]["temp"]
         desc = tomorrow_forecast["weather"][0]["description"]
-        return f"🌦 Weather in {city} tomorrow:\nTemperature: {temp}°C\nDescription: {desc}"
+        return f"🌦 Weather in {city_name}, {country} tomorrow:\nTemperature: {temp}°C\nDescription: {desc}"
 
-# Message handler
+# ---------------------
+# MESSAGE HANDLER
+# ---------------------
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.lower()
+    text = update.message.text.lower().strip()
+
+    # Only process messages that contain 'weather'
+    if "weather" not in text:
+        return  # ignore other messages
+
     day = "today"
     if "tomorrow" in text:
         day = "tomorrow"
+        text = text.replace("tomorrow", "")
+    elif "today" in text:
+        text = text.replace("today", "")
 
-    city = text.replace("weather", "").replace("forecast", "").replace("today", "").replace("tomorrow", "").strip()
+    # Extract city
+    city = text.replace("weather", "").replace("forecast", "").strip()
     if not city:
         await update.message.reply_text("❗ Please provide a city, e.g., 'London weather tomorrow'")
         return
@@ -118,7 +132,7 @@ async def home():
     return {"status": "Bot is running!"}
 
 # ---------------------
-# MAIN (optional, for local testing)
+# MAIN (for local testing)
 # ---------------------
 if __name__ == "__main__":
     import uvicorn
