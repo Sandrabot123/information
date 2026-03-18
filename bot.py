@@ -14,10 +14,15 @@ app = Flask(__name__)
 # Create Telegram application
 application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
+
 # --- HANDLERS ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print("START command received")
-    await update.message.reply_text("Hello! Your bot is working ✅")
+
+    # prevent crash if message is None
+    if update.message:
+        await update.message.reply_text("Hello! Your bot is working ✅")
+
 
 # Add handlers
 application.add_handler(CommandHandler("start", start))
@@ -26,15 +31,23 @@ application.add_handler(CommandHandler("start", start))
 # --- WEBHOOK ROUTE ---
 @app.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
 def webhook():
-    update = Update.de_json(request.get_json(force=True), application.bot)
+    try:
+        data = request.get_json(force=True)
+        print("INCOMING:", data)  # 👈 DEBUG
 
-    # Run async handler manually
-    asyncio.run(application.process_update(update))
+        update = Update.de_json(data, application.bot)
+
+        asyncio.run(application.process_update(update))
+
+    except Exception as e:
+        import traceback
+        print("ERROR OCCURRED:")
+        traceback.print_exc()  # 👈 VERY IMPORTANT
 
     return "ok"
 
 
-# --- HOME ROUTE (for testing) ---
+# --- HOME ROUTE ---
 @app.route("/")
 def home():
     return "Bot is running!"
@@ -42,7 +55,7 @@ def home():
 
 # --- MAIN ---
 if __name__ == "__main__":
-    # IMPORTANT: DO NOT set webhook here (causes warning)
-    # Set it manually once (see below)
+    # 🔥 IMPORTANT: initialize the bot (this was missing before)
+    asyncio.run(application.initialize())
 
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
