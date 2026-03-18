@@ -3,12 +3,11 @@ import requests
 from telegram import Update
 from telegram.ext import Updater, MessageHandler, Filters, CallbackContext
 
-# Load your environment variables
+# Use your exact environment variable names
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")  # set your bot token too
 
 def get_weather(city: str, day: str = "today"):
-    """Fetch weather info for today or tomorrow using OpenWeatherMap"""
     city = city.strip()
     if day == "today":
         url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={WEATHER_API_KEY}&units=metric"
@@ -24,7 +23,6 @@ def get_weather(city: str, day: str = "today"):
         response = requests.get(url).json()
         if response.get("cod") != "200":
             return None
-        # forecast ~24h later (8 * 3h intervals)
         tomorrow_forecast = response["list"][8]
         temp = tomorrow_forecast["main"]["temp"]
         desc = tomorrow_forecast["weather"][0]["description"]
@@ -36,7 +34,6 @@ def handle_message(update: Update, context: CallbackContext):
     if "tomorrow" in text:
         day = "tomorrow"
 
-    # Extract city name by removing keywords
     city = text.replace("weather", "").replace("forecast", "").replace("today", "").replace("tomorrow", "").strip()
     if not city:
         update.message.reply_text("❗ Please provide a city, e.g., 'London weather tomorrow'")
@@ -49,6 +46,10 @@ def handle_message(update: Update, context: CallbackContext):
         update.message.reply_text(f"❌ City '{city}' not found. Try again.")
 
 def main():
+    if not TELEGRAM_BOT_TOKEN or not WEATHER_API_KEY:
+        print("ERROR: Missing TELEGRAM_TOKEN or WEATHER_API_KEY environment variables!")
+        return
+
     updater = Updater(TELEGRAM_BOT_TOKEN)
     updater.dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
 
