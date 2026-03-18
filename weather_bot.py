@@ -31,9 +31,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Try sending 'London weather' or 'Paris weather tomorrow'."
     )
 
-# Weather function
+# Weather function with auto city formatting
 def get_weather(city: str, day: str = "today"):
-    city = city.strip()
+    city = city.strip().title()  # Capitalize each word
+
+    # Fix small countries/cities that need country codes
+    city_corrections = {
+        "Singapore": "Singapore,SG",
+        "Hong Kong": "Hong Kong,HK",
+        "Macau": "Macau,MO",
+        "London": "London,GB"
+    }
+    city = city_corrections.get(city, city)
+
     if day == "today":
         url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={WEATHER_API_KEY}&units=metric"
         response = requests.get(url).json()
